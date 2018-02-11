@@ -362,11 +362,11 @@ odp_crypto_alg_err_t aesxcbc_gen(odp_packet_t pkt,
 	}
 	do_pad_xor((uint8_t *)e, data, len);
 	if (len == AES_BLOCK_SIZE) {
-		xor_block(e, (const uint32_t*) (session->auth.key + session->auth.key_length));
+		xor_block(e, (const uint32_t*) (session->auth.key + 16));
 	}
 	else
 	{
-		xor_block(e, (const uint32_t*) (session->auth.key + session->auth.key_length*2));
+		xor_block(e, (const uint32_t*) (session->auth.key + 16*2));
 	}
 	EVP_EncryptUpdate(ctx, hash_out, &dummy_len, (uint8_t *)e, sizeof(e));
 	EVP_CIPHER_CTX_free(ctx);	
@@ -375,6 +375,7 @@ odp_crypto_alg_err_t aesxcbc_gen(odp_packet_t pkt,
 	return ODP_CRYPTO_ALG_ERR_NONE;
 }
 
+static
 odp_crypto_alg_err_t aesxcbc_check(odp_packet_t pkt,
 			      const odp_crypto_packet_op_param_t *param,
 			      odp_crypto_generic_session_t *session)
@@ -407,11 +408,11 @@ odp_crypto_alg_err_t aesxcbc_check(odp_packet_t pkt,
 	}
 	do_pad_xor((uint8_t *)e, data, len);
 	if (len == AES_BLOCK_SIZE) {
-		xor_block(e, (const uint32_t*) (session->auth.key + session->auth.key_length));
+		xor_block(e, (const uint32_t*) (session->auth.key + 16));
 	}
 	else
 	{
-		xor_block(e, (const uint32_t*) (session->auth.key + session->auth.key_length*2));
+		xor_block(e, (const uint32_t*) (session->auth.key + 16*2));
 	}
 	EVP_EncryptUpdate(ctx, hash_out, &dummy_len, (uint8_t *)e, sizeof(e));
 	EVP_CIPHER_CTX_free(ctx);	
@@ -423,7 +424,7 @@ odp_crypto_alg_err_t aesxcbc_check(odp_packet_t pkt,
 	return ODP_CRYPTO_ALG_ERR_NONE;
 }	
 
-static int process_aesxcbc_param(odp_crypto_generic_session_t *session, uint32_t key_length)
+static int process_aesxcbc_param(odp_crypto_generic_session_t *session)
 {
 	aes_block kn[3] = {
 		{ 0x01010101, 0x01010101, 0x01010101, 0x01010101 },
@@ -439,22 +440,16 @@ static int process_aesxcbc_param(odp_crypto_generic_session_t *session, uint32_t
 	else
 		session->auth.func = aesxcbc_check;
 
-	/* Number of valid bytes */
-	session->auth.bytes = session->p.auth_digest_len;
-
-	/* Convert keys */
-	session->auth.key_length = key_length;
-
 	ctx = EVP_CIPHER_CTX_new();
 	EVP_EncryptInit_ex(ctx, EVP_aes_128_ecb(), NULL, session->p.auth_key.data, NULL);
 	/*  K1 = 0x01010101010101010101010101010101 encrypted with Key K */
 	EVP_EncryptUpdate(ctx, session->auth.key, &dummy_len, (uint8_t *)kn[0], 16);
 
 	/*  K2 = 0x02020202020202020202020202020202 encrypted with Key K */
-	EVP_EncryptUpdate(ctx, session->auth.key+key_length, &dummy_len, (uint8_t *)kn[1], 16);
+	EVP_EncryptUpdate(ctx, session->auth.key+16, &dummy_len, (uint8_t *)kn[1], 16);
 	
 	/*  K3 = 0x03030303030303030303030303030303 encrypted with Key K */
-	EVP_EncryptUpdate(ctx, session->auth.key+key_length*2, &dummy_len, (uint8_t *)kn[2], 16);	
+	EVP_EncryptUpdate(ctx, session->auth.key+16*2, &dummy_len, (uint8_t *)kn[2], 16);	
 
 	EVP_CIPHER_CTX_free(ctx);	
 	return 0;
@@ -1632,7 +1627,7 @@ odp_crypto_session_create(odp_crypto_session_param_t *param,
 		break;
 
 	case ODP_AUTH_ALG_AES_XCBC_MAC:
-		rc = process_aesxcbc_param(session, 16);
+		rc = process_aesxcbc_param(session);
 		break;
 #if ODP_DEPRECATED_API
 	case ODP_AUTH_ALG_AES128_GCM:
